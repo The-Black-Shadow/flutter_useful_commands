@@ -1,18 +1,14 @@
-# Antigravity Flutter System: Clean Architecture + Bloc + GoRouter
-
 ## **1. Core Philosophy & Manifest**
 
 * **Architecture:** Clean Architecture (Data, Domain, Presentation) is non-negotiable.
 * **State Management:** `flutter_bloc` is the only state manager.
 * **Navigation:** `go_router` is the exclusive routing solution.
+* **Networking:** `dio` is the exclusive HTTP client for all API interactions.
 * **Documentation:** Complexity demands explanation. Any complex logic **MUST** be documented in a dedicated `.txt` file before implementation details are finalized.
 * **Immutability:** Everything is immutable by default. `final` is your best friend.
 * **Strict Typing:** `dynamic` is forbidden unless dealing with untyped 3rd-party JSON (and must be cast immediately).
-
 ---
-
 ## **2. Folder Structure & Organization**
-
 The project structure must be strictly feature-first.
 
 ```text
@@ -21,6 +17,9 @@ lib/
 │   ├── config/                 # Router, Theme, Env variables
 │   │   └── router.dart         # GoRouter configuration
 │   ├── error/                  # Generic failures & exceptions
+│   ├── network/                # Dio client, interceptors, API endpoints
+│   │   ├── dio_client.dart     # Centralized Dio configuration
+│   │   └── auth_interceptor.dart 
 │   ├── usecases/               # Base UseCase interface
 │   └── utils/                  # Extensions, constants
 ├── features/
@@ -46,15 +45,12 @@ docs/                           # NEW: Mandatory Documentation Directory
 └── architecture/
 
 ```
-
 ---
-
 ## **3. The "Complex Logic" Documentation Rule**
 
 **Rule:** If a specific implementation involves more than 3 conditional branches, multiple interacting streams, or a critical business algorithm (e.g., payment calculation, offline sync, nested navigation guards), you **MUST** create a documentation file **BEFORE** or **DURING** the coding process.
 
 **Protocol:**
-
 1. Create a file in `docs/logic/` named `[feature_name]_[logic_name].txt`.
 2. Use the following template:
 
@@ -77,20 +73,15 @@ AUTHOR: [Name]
 
 4. PSEUDOCODE / DIAGRAM:
    (Optional but recommended) Simplified code logic.
-
 ```
-
 3. **Reference this file in the code comments:**
+
 ```dart
 // See docs/logic/auth_session_management.txt for logic details
 void _onSessionExpired() { ... }
 
 ```
-
-
-
 ---
-
 ## **4. Navigation (GoRouter) Rules**
 
 1. **Central Configuration**: All routing logic resides in `lib/core/config/router.dart`.
@@ -100,21 +91,15 @@ void _onSessionExpired() { ... }
 * Implement top-level redirects for authentication (e.g., if not logged in, send to `/login`).
 * Avoid complex logic inside the `redirect` callback. Delegate to an `AuthBloc` state check.
 
-
 5. **Parameters**:
 * **Path Parameters**: Use for required IDs (e.g., `/user/:id`).
 * **Query Parameters**: Use for optional filters (e.g., `/search?q=flutter`).
 * **Extra Objects**: **Avoid** passing complex objects via `extra`. Pass the ID and fetch the data in the new screen's Bloc. This prevents data desynchronization.
 
-
 6. **Navigation Layers**:
 * **Presentation Layer** triggers navigation.
 * **Bloc** should **NOT** depend on `GoRouter`. Bloc emits a state (e.g., `SubmissionSuccess`), and the UI (`BlocListener`) performs the `context.go()`.
-
-
-
 ---
-
 ## **5. Clean Architecture Layers (Strict Mode)**
 
 ### **A. Domain Layer (Pure Dart)**
@@ -125,18 +110,14 @@ void _onSessionExpired() { ... }
 * `final` fields only.
 * Absolutely NO `fromJson`/`toJson`.
 
-
 * **Repositories**:
 * Abstract classes only.
 * Methods return `Future<Either<Failure, Type>>` (using `fpdart` or `dartz`).
-
 
 * **Use Cases**:
 * One class per action.
 * Name: `VerbSubjectUseCase` (e.g., `GetUserDetailsUseCase`).
 * Must have a `call()` method.
-
-
 
 ### **B. Data Layer (The Interface)**
 
@@ -145,25 +126,20 @@ void _onSessionExpired() { ... }
 * Use `json_annotation` & `json_serializable`.
 * Include `toEntity()` and `factory fromEntity()` if shapes differ.
 
-
 * **Data Sources**:
 * Throw Exceptions (not Failures).
-* `RemoteDataSource`: Throws `ServerException`.
+* `RemoteDataSource`: Catches `DioException` and throws a custom `ServerException` (including status codes and messages).
 * `LocalDataSource`: Throws `CacheException`.
-
 
 * **Repositories**:
 * Implement Domain Repository.
-* Catch Exceptions and return `Left(Failure)`.
+* Catch Exceptions (`ServerException`, `CacheException`) and return `Left(Failure)`.
 * **NEVER** let an exception bubble up to the Domain.
-
-
 
 ### **C. Presentation Layer (Flutter + Bloc)**
 
 * **Pages**:
 * Responsible for `Scaffold`, `AppBar`, and injecting the `Bloc`.
-
 
 * **Blocs**:
 * **Event-Driven**: Events are "actions" (e.g., `started`, `refreshRequested`), not results.
@@ -171,15 +147,10 @@ void _onSessionExpired() { ... }
 * **No Logic**: Blocs strictly delegate to UseCases.
 * **Concurrency**: Use `package:bloc_concurrency` (e.g., `droppable`, `restartable`) for high-frequency events like search typing.
 
-
 * **Widgets**:
 * Small, reusable, dumb components.
 * Accept data via constructor, return events via callbacks.
-
-
-
 ---
-
 ## **6. Flutter Bloc Rules**
 
 ### **Naming Conventions**
@@ -187,12 +158,9 @@ void _onSessionExpired() { ... }
 1. **Events**: `FeatureEvent` (base), `FeatureActioned` (subclass).
 * Examples: `AuthLoginButtonPressed`, `UserProfileLoadRequested`.
 
-
 2. **States**: `FeatureState`.
 * Use `freezed` unions for complex states: `_Initial`, `_Loading`, `_Success`, `_Failure`.
 * OR use a single class with `status` enum (`initial`, `loading`, `success`, `failure`).
-
-
 
 ### **State Management Best Practices**
 
@@ -200,20 +168,39 @@ void _onSessionExpired() { ... }
 * **Simple Cases:** ALWAYS use **`Cubit`** for simple features (e.g., toggles, counters, simple data fetches).
 * **Complex Cases:** Use **`Bloc`** only when event tracing, advanced debouncing, or complex event transformation is required.
 
-
 2. **State Updates**:
 * **Use `copyWith**`: Always implement and use the `copyWith` pattern for state updates. Never mutate state variables directly.
 * *Example:* `emit(state.copyWith(status: Status.success, data: newData));`
-
 
 3. **One Bloc Per Feature**: Don't reuse Blocs across disparate features unless it's a global `UserBloc` or `ThemeBloc`.
 4. **BlocProvider**: Provide Blocs at the highest necessary level (usually the Page level, using `GoRouter`'s builder).
 5. **BlocConsumer**: Use when you need to both Rebuild UI (Builder) and Perform Actions (Listener, e.g., Show Snackbars/Navigate).
 6. **No Context in Bloc**: Never pass `BuildContext` into a Bloc.
-
 ---
+## **7. Networking (Dio) Rules**
 
-## **7. Coding Standards & Syntax**
+1. **Centralized Configuration**:
+* Configure a single `Dio` instance in `core/network/dio_client.dart`.
+* Define `BaseOptions` for `baseUrl`, `connectTimeout`, and `receiveTimeout`.
+
+2. **Interceptors**:
+* Use interceptors for global headers (e.g., `Accept: application/json`).
+* Create an `AuthInterceptor` to automatically inject Bearer tokens into requests.
+* Use `LogInterceptor` for debugging (restrict to debug mode only).
+* Handle token refresh logic directly inside a specialized interceptor using `QueuedInterceptorsWrapper` to pause incoming requests while refreshing.
+
+3. **Error Handling & Mapping**:
+* Wrap `dio.get()`, `dio.post()`, etc., in `try-catch` blocks inside the `RemoteDataSource`.
+* Catch `DioException`. Extract the `statusCode` and response `data`.
+* Throw a custom `ServerException` containing the extracted error message and code.
+* *Example:* `if (e.type == DioExceptionType.connectionTimeout) throw ServerException('Connection timed out');`
+
+
+4. **Data Passing**:
+* Use `dio`'s built-in `FormData` for multipart/form-data uploads.
+* Keep endpoint paths as constants in a dedicated `ApiEndpoints` class.
+---
+## **8. Coding Standards & Syntax**
 
 ### **Dart**
 
@@ -222,17 +209,13 @@ void _onSessionExpired() { ... }
 * `const` for compile-time constants.
 * `late` is a code smell. Avoid unless absolutely necessary (e.g., AnimationControllers).
 
-
 2. **Functions**:
 * Small, focused, single responsibility.
 * Type annotate ALL parameters and return types.
 
-
 3. **Async**:
 * Prefer `async/await` over `.then()`.
 * Always wrap `await` calls in `try/catch` inside the Data Layer.
-
-
 
 ### **JSON Handling**
 
@@ -246,15 +229,11 @@ void _onSessionExpired() { ... }
 * **UI**:
 * `Failure` objects should have a `message` property suitable for display (or a key for localization).
 * Map Failures to user-friendly messages in the Presentation layer, not the Domain layer.
-
-
-
 ---
-
-## **8. Testing Protocol**
+## **9. Testing Protocol**
 
 1. **Unit Tests (Core/Domain/Data)**:
-* Mock dependencies using `mocktail`.
+* Mock dependencies using `mocktail` (including mocking `Dio` for data source tests).
 * Test every UseCase.
 * Test Repository implementations (checking if they catch exceptions and return Failures).
 
@@ -268,34 +247,26 @@ void _onSessionExpired() { ... }
 3. **Widget Tests**:
 * Test the "Happy Path" of the UI.
 * Test Error states (does the Snackbar appear?).
-
-
-
 ---
-
-## **9. Antigravity Implementation Checklist**
+## **10. Antigravity Implementation Checklist**
 
 Before committing any feature, ensure:
 
 1. [ ] Logic is separated into Data/Domain/Presentation.
 2. [ ] Complex logic is documented in `docs/logic/*.txt`.
 3. [ ] `GoRouter` path is added to `AppRoutes`.
-4. [ ] `Bloc` handles `Loading`, `Success`, and `Failure` states.
-5. [ ] Dependency Injection is registered in `injection_container.dart`.
-6. [ ] No `print` statements (use a Logger).
-7. [ ] No `dynamic` types used implicitly.
-
+4. [ ] API calls are made via the centralized `Dio` client.
+5. [ ] `Bloc` handles `Loading`, `Success`, and `Failure` states.
+6. [ ] Dependency Injection is registered in `injection_container.dart`.
+7. [ ] No `print` statements (use a Logger or Dio `LogInterceptor`).
+8. [ ] No `dynamic` types used implicitly.
 ---
-
 # Example: Complex Logic Documentation (Template)
 
 **File:** `docs/logic/checkout_payment_flow.txt`
 
 ```text
 FILENAME: docs/logic/checkout_payment_flow.txt
-FEATURE: Checkout
-AUTHOR: Senior Dev
-DATE: 2024-05-20
 
 1. OBJECTIVE:
    Handle the multi-step payment process involving stock validation, 
@@ -321,7 +292,5 @@ DATE: 2024-05-20
    - 3DS -> context.push('/checkout/3ds')
 
 4. EDGE CASES:
-   - Network drops during step 'd'. Implementation: Retry mechanism with exponential backoff (see Data Layer).
-   - User closes app during 3DS. Implementation: Webhook listener on backend updates order status eventually.
-
-```
+   - Network fails: Retry w/ backoff.
+   - App closed (3DS): Webhook handles it.
