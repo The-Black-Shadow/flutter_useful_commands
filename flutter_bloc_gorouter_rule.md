@@ -196,10 +196,20 @@ void _onSessionExpired() { ... }
 
 ### **State Management Best Practices**
 
-1. **One Bloc Per Feature**: Don't reuse Blocs across disparate features unless it's a global `UserBloc` or `ThemeBloc`.
-2. **BlocProvider**: Provide Blocs at the highest necessary level (usually the Page level, using `GoRouter`'s builder).
-3. **BlocConsumer**: Use when you need to both Rebuild UI (Builder) and Perform Actions (Listener, e.g., Show Snackbars/Navigate).
-4. **No Context in Bloc**: Never pass `BuildContext` into a Bloc.
+1. **Cubit vs. Bloc**:
+* **Simple Cases:** ALWAYS use **`Cubit`** for simple features (e.g., toggles, counters, simple data fetches).
+* **Complex Cases:** Use **`Bloc`** only when event tracing, advanced debouncing, or complex event transformation is required.
+
+
+2. **State Updates**:
+* **Use `copyWith**`: Always implement and use the `copyWith` pattern for state updates. Never mutate state variables directly.
+* *Example:* `emit(state.copyWith(status: Status.success, data: newData));`
+
+
+3. **One Bloc Per Feature**: Don't reuse Blocs across disparate features unless it's a global `UserBloc` or `ThemeBloc`.
+4. **BlocProvider**: Provide Blocs at the highest necessary level (usually the Page level, using `GoRouter`'s builder).
+5. **BlocConsumer**: Use when you need to both Rebuild UI (Builder) and Perform Actions (Listener, e.g., Show Snackbars/Navigate).
+6. **No Context in Bloc**: Never pass `BuildContext` into a Bloc.
 
 ---
 
